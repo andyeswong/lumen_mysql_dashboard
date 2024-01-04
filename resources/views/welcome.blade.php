@@ -64,7 +64,15 @@
             </div>
         </div>
         @endif
-
+        @if(isset($funny_message_success))
+        <div class="row">
+            <div class="col col-12">
+                <div class="alert alert-success" role="success">
+                    {{ $funny_message_success }}
+                </div>
+            </div>
+        </div>
+        @endif
 
         <div class="row">
             <!-- 2 columns left: server data like ip, username, password, and right lists of databases available -->
@@ -121,15 +129,25 @@
                             <tr>
                                 <th>Database</th>
                                 @if($pass_match)
-                                <th>Delete</th>
+                                <th>Actions</th>
                                 @endif
                             </tr>
                             @foreach($databases as $database)
                             <tr>
                                 <td>{{ $database }}</td>
+                                <!-- @if($pass_match)
+                                <td>
+                                    <form action="/" method="POST" onsubmit="return confirmDelete('{{ $database }}')">
+                                        <input type="hidden" name="_method" value="DELETE">
+                                        <input type="hidden" name="db_name" value="{{ $database }}">
+                                        <input type="hidden" name="pass" value="{{ $pass_string }}">
+                                        <input type="submit" value="Delete">
+                                    </form>
+                                </td>
+                                @endif -->
                                 @if($pass_match)
                                 <td>
-                                    <form action="/" method="POST">
+                                    <form action="/" method="POST" onsubmit="return confirmDelete('{{ $database }}')" name="delete_{{ $database }}">
                                         <input type="hidden" name="_method" value="DELETE">
                                         <input type="hidden" name="db_name" value="{{ $database }}">
                                         <input type="hidden" name="pass" value="{{ $pass_string }}">
@@ -152,6 +170,8 @@
             </div>
         </div>
 </body>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
     // cursor animation
     const cursor = document.getElementById('cursor');
@@ -179,6 +199,71 @@
             toggle_theme();
         }
     });
-    
+
+    // // confirm delete
+    // function confirmDelete(databaseName) {
+    //     return confirm(`Are you sure you want to delete ${databaseName}?`);
+    // }
+
+    function confirmDelete(databaseName) {
+    Swal.fire({
+        title: 'To delete this database, please type the name below: ' + "'" + databaseName +"'",
+        html: '<input id="swal-input1" class="swal2-input" autocapitalize="off">',
+        showCancelButton: true,
+        confirmButtonText: 'Delete',
+        confirmButtonColor: '#d33',
+        cancelButtonText: 'Cancel',
+        cancelButtonColor: '#3085d6',
+        allowOutsideClick: false,
+        preConfirm: () => {
+            const inputValue = document.getElementById('swal-input1').value;
+            return new Promise((resolve) => {
+                if (!inputValue || inputValue !== databaseName) {
+                    Swal.showValidationMessage('The database name does not match');
+                } else {
+                    resolve();
+                }
+            });
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            document.forms[`delete_${databaseName}`].submit();
+            let timerInterval;
+            Swal.fire({
+            title: "",
+            html: "Saving changes...",
+            timer: 2000,
+            timerProgressBar: true,
+            didOpen: () => {
+                Swal.showLoading();
+                const timer = Swal.getPopup().querySelector("b");
+                timerInterval = setInterval(() => {
+                timer.textContent = `${Swal.getTimerLeft()}`;
+                }, 100);
+            },
+            willClose: () => {
+                clearInterval(timerInterval);
+            }
+            })
+        }
+    });
+
+    // Deshabilitar el botón de confirmación hasta que el nombre sea correcto
+    const modalFooter = document.querySelector('.swal2-modal .swal2-actions');
+    const inputField = document.getElementById('swal-input1');
+    const confirmButton = modalFooter.querySelector('.swal2-confirm');
+
+    inputField.addEventListener('input', function () {
+        const inputValue = inputField.value;
+        if (inputValue === databaseName) {
+            confirmButton.removeAttribute('disabled');
+        } else {
+            confirmButton.setAttribute('disabled', true);
+        }
+    });
+    confirmButton.setAttribute('disabled', true);
+
+    return false;
+}
 </script>
 </html>

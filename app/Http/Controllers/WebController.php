@@ -58,13 +58,13 @@ class WebController extends Controller
         }
 
 
-        $funny_message = "The dabaase has been created, but you have to create the tables manually, sorry 😢, let\'s code 🚀!";
+        $funny_message_success = "The database ". $db_name. " has been created, but you have to create the tables manually, sorry 😢, let\'s code 🚀!";
 
 
         $db_name = $request->db_name;
         DB::statement("CREATE DATABASE $db_name");
         $databases = $this->getDatabases();
-        return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message'));
+        return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message_success'));
     }
 
     public function delete_db(Request $request){
@@ -73,7 +73,6 @@ class WebController extends Controller
         $pass_string = $pass;
         $databases = DB::select('SHOW DATABASES');
     
-
         if(!$pass_match){
             return view("welcome", compact('databases', 'pass_match', 'pass_string'));
         }
@@ -99,10 +98,9 @@ class WebController extends Controller
 
         // delete the database
         DB::statement("DROP DATABASE $db_name");
-        $funny_message = "The database has been deleted, now you can create a new one 😎";
+        $funny_message_success = "The database ". $db_name ." has been deleted, now you can create a new one 😎";
         $databases = $this->getDatabases();
-        return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message'));
-
+        return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message_success'));
 
     }
 
