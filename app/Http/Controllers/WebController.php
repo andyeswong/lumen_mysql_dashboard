@@ -29,7 +29,6 @@ class WebController extends Controller
         
         $databases = $this->getDatabases();
 
-
         $pass_match = Hash::check($pass_string, env('SECRET_STRING'));
 
         return view("welcome", compact('databases', 'pass_match', 'pass_string'));
@@ -44,12 +43,18 @@ class WebController extends Controller
         if(!$pass_match){
             return view("welcome", compact('databases', 'pass_match', 'pass_string'));
         }
-
+        
         //check if the database already exists
         $db_name = $request->db_name;
         $databases = array_map(function ($value) {
             return $value->Database;
         }, $databases);
+
+        if($db_name == "" || strpos($db_name, "-") !== false){
+            $funny_message= "Database name cannot be empty or contain ' - '😢";
+            $databases = $this->getDatabases();
+            return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message'));
+        }
 
         if(in_array($db_name, $databases)){
             $funny_message = "The database already exists, try another name 😢";
@@ -57,9 +62,7 @@ class WebController extends Controller
             return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message'));
         }
 
-
         $funny_message_success = "The database ". $db_name. " has been created, but you have to create the tables manually, sorry 😢, let\'s code 🚀!";
-
 
         $db_name = $request->db_name;
         DB::statement("CREATE DATABASE $db_name");
