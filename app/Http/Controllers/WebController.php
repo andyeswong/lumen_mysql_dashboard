@@ -35,9 +35,8 @@ class WebController extends Controller
     }
 
     public function create_db(Request $request){
-        $pass = $request->pass;
-        $pass_match = Hash::check($pass, env('SECRET_STRING'));
-        $pass_string = $pass;
+        $pass_match = Hash::check($request->pass, env('SECRET_STRING'));
+        $pass_string = $request->pass;
         $databases = DB::select('SHOW DATABASES');
 
         if(!$pass_match){
@@ -71,9 +70,8 @@ class WebController extends Controller
     }
 
     public function delete_db(Request $request){
-        $pass = $request->pass;
-        $pass_match = Hash::check($pass, env('SECRET_STRING'));
-        $pass_string = $pass;
+        $pass_match = Hash::check($request->pass, env('SECRET_STRING'));
+        $pass_string = $request->pass;
         $databases = DB::select('SHOW DATABASES');
     
         if(!$pass_match){
@@ -107,17 +105,28 @@ class WebController extends Controller
 
     }
 
-    private function getAllDatabases(){
-        $databases = DB::select('SHOW DATABASES');
-        //remove default databases, remeber that is an array of objects
-        $databases = array_filter($databases, function ($value) {
-            return !in_array($value->Database, ['information_schema', 'mysql', 'performance_schema', 'sys']);
-        });
-        //get only database names
-        $databases = array_map(function ($value) {
-            return $value->Database;
-        }, $databases);
-        return $databases;
+    public function flushPrivileges(Request $request){
+        $pass_match = Hash::check($request->pass, env('SECRET_STRING'));
+        $pass_string = $request->pass;
+         
+        if(!$pass_match){
+            return view("welcome", compact('databases', 'pass_match', 'pass_string'));
+        }
+
+        try{
+            DB::statement("GRANT ALL ON *.* TO '".env('DB_USERNAME')."'@'".$request->address."' IDENTIFIED BY '".env('DB_PASSWORD')."' WITH GRANT OPTION;");
+            DB::statement("FLUSH PRIVILEGES;");
+            $funny_message_success = "The privileges have been flushed for the IP ".$request->address.", now you can connect to the database 😎";
+            
+            $databases = $this->getDatabases();
+            return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message_success'));
+        }
+        catch(\Exception $e){
+            $funny_message = "An error occurred, please check the logs 😢";
+            
+            $databases = $this->getDatabases();
+            return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message'));
+        }
     }
 
     private function getDatabases(){

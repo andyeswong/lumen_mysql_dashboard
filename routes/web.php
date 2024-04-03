@@ -16,3 +16,4 @@
 $router->get('/',"WebController@welcome");
 $router->post('/',"WebController@create_db");
 $router->delete('/',"WebController@delete_db");
+$router->post('/privileges',"WebController@flushPrivileges");

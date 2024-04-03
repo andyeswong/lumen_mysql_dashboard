@@ -94,7 +94,7 @@
                         <table class="table">
                             <tr>
                                 <th>IP</th>
-                                <td>{{ env('DB_IP') }}</td>
+                                <td>{{ env('DB_HOST') }}</td>
                             </tr>
                             <tr>
                                 <th>Username</th>
@@ -111,12 +111,29 @@
                         <h3 class="text text-error">🔐 Wrong password</h3>
                         Maybe you want to try again?
                         <form action="/" method="GET">
-                            <input type="text" name="pass" placeholder="password">
+                            <input type="password" name="pass" placeholder="password">
                             <input type="submit" value="Submit">
                         </form>
                     </div>
                     @endif
                 </div>
+                @if($pass_match)
+                <!-- flush privileges -->
+                <div class="card mt-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2>🛜 Flush privileges</h2>
+                        </div>
+                        <div class="card-body">
+                            <form action="/privileges" method="POST" onsubmit="return validateAddress()">
+                                <input type="text" id="ip_address" name="address" placeholder="IP to give privileges" size="25">
+                                <input type="hidden" name="pass" value="{{ $pass_string }}">
+                                <input type="submit" value="Submit">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                @endif
             </div>
             <div class="col col-6">
                 <div class="card">
@@ -269,6 +286,22 @@
             return false;
         }
         
+        return true;
+    }
+    
+    function validateAddress() {
+        var ipAddress = document.getElementById('ip_address');
+        var ipPattern = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+        if (!ipPattern.test(ipAddress.value)) {
+            Swal.fire({
+                icon: 'error',
+                title: 'Invalid IP Address',
+                text: 'Please enter a valid IP address'
+            });
+
+            ipAddress.value = "";
+            return false;
+        }
         return true;
     }
 </script>
