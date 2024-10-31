@@ -292,11 +292,16 @@
     function validateAddress() {
         var ipAddress = document.getElementById('ip_address');
         var ipPattern = /^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-        if (!ipPattern.test(ipAddress.value)) {
+        var domainPattern = /^(?!:\/\/)([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+[a-zA-Z]{2,}$/;
+
+        var isValidIp = ipPattern.test(ipAddress.value);
+        var isValidDomain = domainPattern.test(ipAddress.value);
+
+        if (!isValidIp && !isValidDomain) {
             Swal.fire({
                 icon: 'error',
-                title: 'Invalid IP Address',
-                text: 'Please enter a valid IP address'
+                title: 'Invalid IP Address or Domain',
+                text: 'Please enter a valid IP address or domain'
             });
 
             ipAddress.value = "";

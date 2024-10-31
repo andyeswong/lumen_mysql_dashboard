@@ -6,6 +6,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 
 class WebController extends Controller
 {
@@ -108,20 +109,42 @@ class WebController extends Controller
     public function flushPrivileges(Request $request){
         $pass_match = Hash::check($request->pass, env('SECRET_STRING'));
         $pass_string = $request->pass;
-         
+        
         if(!$pass_match){
             return view("welcome", compact('databases', 'pass_match', 'pass_string'));
         }
 
-        try{
-            DB::statement("GRANT ALL ON *.* TO '".env('DB_USERNAME')."'@'".$request->address."' IDENTIFIED BY '".env('DB_PASSWORD')."' WITH GRANT OPTION;");
+        $validator = Validator::make($request->all(), [
+            'address' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => 'Invalid address input.'], 400);
+        }
+
+        $validatedData = $validator->validate();
+        $address = $validatedData['address'];
+
+        $ipPattern = '/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/';
+        $domainPattern = '/^(?!:\/\/)([a-zA-Z0-9]+(-[a-zA-Z0-9]+)*\.)+[a-zA-Z]{2,}$/';
+
+        $isValidIp = preg_match($ipPattern, $address);
+        $isValidDomain = preg_match($domainPattern, $address);
+
+        if (!$isValidIp && !$isValidDomain) {
+            return response()->json(['error' => 'Invalid IP address or domain.'], 400);
+        }
+
+        $sanitizedAddress = $isValidIp ? filter_var($address, FILTER_VALIDATE_IP) : htmlspecialchars($address, ENT_QUOTES, 'UTF-8');
+
+        try {
+            DB::statement("GRANT ALL ON *.* TO '".env('DB_USERNAME')."'@'".$sanitizedAddress."' IDENTIFIED BY '".env('DB_PASSWORD')."' WITH GRANT OPTION;");
             DB::statement("FLUSH PRIVILEGES;");
-            $funny_message_success = "The privileges have been flushed for the IP ".$request->address.", now you can connect to the database 😎";
+            $funny_message_success = "The privileges have been flushed for the address ".$sanitizedAddress.", now you can connect to the database 😎";
             
             $databases = $this->getDatabases();
             return view("welcome", compact('databases', 'pass_match', 'pass_string', 'funny_message_success'));
-        }
-        catch(\Exception $e){
+        } catch(\Exception $e) {
             $funny_message = "An error occurred, please check the logs 😢";
             
             $databases = $this->getDatabases();
