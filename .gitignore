@@ -4,3 +4,8 @@ Homestead.json
 Homestead.yaml
 .env
 .phpunit.result.cache
+.aider*
+/storage/*.key
+/storage/app/backups/*
+!/storage/app/backups/.gitkeep
+node_modules/

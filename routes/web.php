@@ -13,7 +13,11 @@
 |
 */
 
-$router->get('/',"WebController@welcome");
-$router->post('/',"WebController@create_db");
-$router->delete('/',"WebController@delete_db");
-$router->post('/privileges',"WebController@flushPrivileges");
+// Serve React app for root and non-API routes
+$router->get('/', function () {
+    return view('app');
+});
+
+$router->get('/{route:(?!api/).*}', function () {
+    return view('app');
+});
