@@ -399,6 +399,195 @@ class ApiController extends Controller
         }
     }
 
+    public function restoreBackup(Request $request)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $filename = $request->input('filename');
+        $targetDatabase = $request->input('target_database');
+        $createNew = $request->input('create_new', false);
+        $newDatabaseName = $request->input('new_database_name');
+
+        if (!$filename) {
+            return response()->json(['error' => 'Backup filename is required'], 400);
+        }
+
+        if ($createNew) {
+            if (!$newDatabaseName) {
+                return response()->json(['error' => 'New database name is required when creating new database'], 400);
+            }
+            $targetDatabase = $newDatabaseName;
+        } else {
+            if (!$targetDatabase) {
+                return response()->json(['error' => 'Target database is required'], 400);
+            }
+        }
+
+        $backupPath = storage_path('app/backups/' . $filename);
+        
+        if (!file_exists($backupPath)) {
+            return response()->json(['error' => 'Backup file not found'], 404);
+        }
+
+        try {
+            // Get database connection details
+            $host = env('DB_HOST', 'localhost');
+            $port = env('DB_PORT', '3306');
+            $username = env('DB_USERNAME');
+            $password = env('DB_PASSWORD');
+
+            // Create new database if requested
+            if ($createNew) {
+                // Validate database name
+                if (!preg_match('/^[a-zA-Z0-9_]+$/', $newDatabaseName)) {
+                    return response()->json(['error' => 'Database name can only contain letters, numbers, and underscores'], 400);
+                }
+
+                try {
+                    DB::statement("CREATE DATABASE IF NOT EXISTS `{$newDatabaseName}`");
+                } catch (\Exception $e) {
+                    return response()->json(['error' => 'Failed to create new database: ' . $e->getMessage()], 500);
+                }
+            } else {
+                // Check if target database exists
+                $databases = DB::select('SHOW DATABASES');
+                $dbExists = false;
+                foreach ($databases as $db) {
+                    if ($db->Database === $targetDatabase) {
+                        $dbExists = true;
+                        break;
+                    }
+                }
+                
+                if (!$dbExists) {
+                    return response()->json(['error' => 'Target database does not exist'], 404);
+                }
+            }
+
+            // Build mysql command for restoration
+            $escapedPassword = escapeshellarg($password);
+            $command = "mysql -h {$host} -P {$port} -u {$username} -p{$escapedPassword} \"{$targetDatabase}\" < \"{$backupPath}\" 2>&1";
+
+            // Execute restoration command
+            $output = shell_exec($command);
+
+            // Check if restoration was successful (mysql returns empty output on success)
+            if ($output === null || trim($output) === '') {
+                $action = $createNew ? 'created and restored' : 'restored';
+                return response()->json([
+                    'success' => "Database '{$targetDatabase}' {$action} successfully from backup '{$filename}'! 🎉",
+                    'databases' => $this->getFilteredDatabases()
+                ]);
+            } else {
+                return response()->json(['error' => 'Restoration failed: ' . $output], 500);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Restoration failed: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function cloneDatabase(Request $request)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $sourceDatabase = $request->input('source_database');
+        $targetDatabase = $request->input('target_database');
+
+        if (!$sourceDatabase || !$targetDatabase) {
+            return response()->json(['error' => 'Source and target database names are required'], 400);
+        }
+
+        // Validate database names
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $targetDatabase)) {
+            return response()->json(['error' => 'Target database name can only contain letters, numbers, and underscores'], 400);
+        }
+
+        try {
+            // Check if source database exists and target doesn't exist
+            $databases = DB::select('SHOW DATABASES');
+            $sourceExists = false;
+            $targetExists = false;
+            
+            foreach ($databases as $db) {
+                if ($db->Database === $sourceDatabase) {
+                    $sourceExists = true;
+                }
+                if ($db->Database === $targetDatabase) {
+                    $targetExists = true;
+                }
+            }
+
+            if (!$sourceExists) {
+                return response()->json(['error' => 'Source database does not exist'], 404);
+            }
+
+            if ($targetExists) {
+                return response()->json(['error' => 'Target database already exists'], 409);
+            }
+
+            // Create target database
+            DB::statement("CREATE DATABASE `{$targetDatabase}`");
+
+            // Get database connection details
+            $host = env('DB_HOST', 'localhost');
+            $port = env('DB_PORT', '3306');
+            $username = env('DB_USERNAME');
+            $password = env('DB_PASSWORD');
+
+            // Create temporary backup file
+            $tempBackupPath = storage_path('app/backups/temp_clone_' . time() . '.sql');
+
+            // Escape password for shell command
+            $escapedPassword = escapeshellarg($password);
+
+            // Dump source database
+            $dumpCommand = "mysqldump -h {$host} -P {$port} -u {$username} -p{$escapedPassword} --single-transaction --routines --triggers \"{$sourceDatabase}\" > \"{$tempBackupPath}\" 2>&1";
+            $dumpOutput = shell_exec($dumpCommand);
+
+            if (!file_exists($tempBackupPath) || filesize($tempBackupPath) == 0) {
+                // Clean up target database if dump failed
+                DB::statement("DROP DATABASE IF EXISTS `{$targetDatabase}`");
+                return response()->json(['error' => 'Failed to dump source database: ' . $dumpOutput], 500);
+            }
+
+            // Restore to target database
+            $restoreCommand = "mysql -h {$host} -P {$port} -u {$username} -p{$escapedPassword} \"{$targetDatabase}\" < \"{$tempBackupPath}\" 2>&1";
+            $restoreOutput = shell_exec($restoreCommand);
+
+            // Clean up temporary backup file
+            if (file_exists($tempBackupPath)) {
+                unlink($tempBackupPath);
+            }
+
+            // Check if restoration was successful
+            if ($restoreOutput !== null && trim($restoreOutput) !== '') {
+                // Clean up target database if restore failed
+                DB::statement("DROP DATABASE IF EXISTS `{$targetDatabase}`");
+                return response()->json(['error' => 'Failed to restore to target database: ' . $restoreOutput], 500);
+            }
+
+            return response()->json([
+                'success' => "Database '{$sourceDatabase}' cloned to '{$targetDatabase}' successfully! 🎉",
+                'databases' => $this->getFilteredDatabases()
+            ]);
+
+        } catch (\Exception $e) {
+            // Clean up target database if it was created
+            try {
+                DB::statement("DROP DATABASE IF EXISTS `{$targetDatabase}`");
+            } catch (\Exception $cleanupException) {
+                // Ignore cleanup errors
+            }
+            
+            return response()->json(['error' => 'Clone operation failed: ' . $e->getMessage()], 500);
+        }
+    }
+
     private function formatBytes($size, $precision = 2)
     {
         if ($size == 0) return '0 B';

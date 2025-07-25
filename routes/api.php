@@ -24,6 +24,8 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     $router->post('/backup-database', 'ApiController@backupDatabase');
     $router->post('/backup-all-databases', 'ApiController@backupAllDatabases');
     $router->get('/list-backups', 'ApiController@listBackups');
-    $router->post('/download-backup', 'ApiController@downloadBackup');
-    $router->post('/delete-backup', 'ApiController@deleteBackup');
+$router->post('/download-backup', 'ApiController@downloadBackup');
+$router->post('/delete-backup', 'ApiController@deleteBackup');
+$router->post('/restore-backup', 'ApiController@restoreBackup');
+$router->post('/clone-database', 'ApiController@cloneDatabase');
 });

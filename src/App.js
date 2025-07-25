@@ -30,7 +30,11 @@ import {
   FormControl,
   InputLabel,
   Collapse,
-  Chip
+  Chip,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormLabel
 } from '@mui/material';
 import {
   Computer,
@@ -46,7 +50,9 @@ import {
   Download,
   DeleteOutline,
   ExpandMore,
-  ExpandLess
+  ExpandLess,
+  Restore,
+  FileCopy
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -67,6 +73,15 @@ const App = () => {
   const [showBackups, setShowBackups] = useState(false);
   const [backupLoading, setBackupLoading] = useState(false);
   const [selectedDatabase, setSelectedDatabase] = useState('');
+  const [restoreDialog, setRestoreDialog] = useState({ open: false, filename: '' });
+  const [restoreMode, setRestoreMode] = useState('existing'); // 'existing' or 'new'
+  const [targetDatabase, setTargetDatabase] = useState('');
+  const [newDatabaseName, setNewDatabaseName] = useState('');
+  const [restoreLoading, setRestoreLoading] = useState(false);
+  const [cloneDialog, setCloneDialog] = useState({ open: false });
+  const [sourceCloneDatabase, setSourceCloneDatabase] = useState('');
+  const [targetCloneDatabase, setTargetCloneDatabase] = useState('');
+  const [cloneLoading, setCloneLoading] = useState(false);
 
   const theme = createTheme({
     palette: {
@@ -112,12 +127,12 @@ const App = () => {
       if (response.data.authenticated) {
         setAuthenticated(true);
         setServerInfo(response.data.server_info);
-        setMessage({ text: 'Authentication successful! 🎉', type: 'success' });
+        setMessage({ text: 'Authentication successful! ', type: 'success' });
       } else {
-        setMessage({ text: 'Wrong password 😢', type: 'error' });
+        setMessage({ text: 'Wrong password ', type: 'error' });
       }
     } catch (error) {
-      setMessage({ text: 'Authentication failed 😢', type: 'error' });
+      setMessage({ text: 'Authentication failed ', type: 'error' });
     }
     setLoading(false);
   };
@@ -130,13 +145,13 @@ const App = () => {
       setDatabases(response.data.databases);
       setServerInfo(response.data.server_info);
     } catch (error) {
-      setMessage({ text: 'Failed to fetch databases 😢', type: 'error' });
+      setMessage({ text: 'Failed to fetch databases ', type: 'error' });
     }
   };
 
   const createDatabase = async () => {
     if (!newDbName.trim()) {
-      setMessage({ text: 'Database name cannot be empty 😢', type: 'error' });
+      setMessage({ text: 'Database name cannot be empty ', type: 'error' });
       return;
     }
 
@@ -150,14 +165,14 @@ const App = () => {
       setDatabases(response.data.databases);
       setNewDbName('');
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Failed to create database 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Failed to create database ', type: 'error' });
     }
     setLoading(false);
   };
 
   const deleteDatabase = async () => {
     if (confirmDeleteName !== deleteDialog.dbName) {
-      setMessage({ text: 'Database name confirmation does not match 😢', type: 'error' });
+      setMessage({ text: 'Database name confirmation does not match ', type: 'error' });
       return;
     }
 
@@ -171,14 +186,14 @@ const App = () => {
       setDeleteDialog({ open: false, dbName: '' });
       setConfirmDeleteName('');
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Failed to delete database 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Failed to delete database ', type: 'error' });
     }
     setLoading(false);
   };
 
   const flushPrivileges = async () => {
     if (!privilegeAddress.trim()) {
-      setMessage({ text: 'Address cannot be empty 😢', type: 'error' });
+      setMessage({ text: 'Address cannot be empty ', type: 'error' });
       return;
     }
 
@@ -191,7 +206,7 @@ const App = () => {
       setMessage({ text: response.data.success, type: 'success' });
       setPrivilegeAddress('');
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Failed to flush privileges 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Failed to flush privileges ', type: 'error' });
     }
     setLoading(false);
   };
@@ -217,7 +232,7 @@ const App = () => {
 
   const backupDatabase = async (database) => {
     if (!database) {
-      setMessage({ text: 'Please select a database to backup 😢', type: 'error' });
+      setMessage({ text: 'Please select a database to backup ', type: 'error' });
       return;
     }
 
@@ -231,7 +246,7 @@ const App = () => {
       fetchBackups(); // Refresh backup list
       setSelectedDatabase('');
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Backup failed 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Backup failed ', type: 'error' });
     }
     setBackupLoading(false);
   };
@@ -245,7 +260,7 @@ const App = () => {
       setMessage({ text: response.data.success, type: 'success' });
       fetchBackups(); // Refresh backup list
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Backup failed 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Backup failed ', type: 'error' });
     }
     setBackupLoading(false);
   };
@@ -268,9 +283,9 @@ const App = () => {
       link.remove();
       window.URL.revokeObjectURL(url);
       
-      setMessage({ text: `Backup ${filename} downloaded successfully! 🎉`, type: 'success' });
+      setMessage({ text: `Backup ${filename} downloaded successfully! `, type: 'success' });
     } catch (error) {
-      setMessage({ text: 'Failed to download backup 😢', type: 'error' });
+      setMessage({ text: 'Failed to download backup ', type: 'error' });
     }
   };
 
@@ -287,8 +302,71 @@ const App = () => {
       setMessage({ text: response.data.success, type: 'success' });
       fetchBackups(); // Refresh backup list
     } catch (error) {
-      setMessage({ text: error.response?.data?.error || 'Failed to delete backup 😢', type: 'error' });
+      setMessage({ text: error.response?.data?.error || 'Failed to delete backup', type: 'error' });
     }
+  };
+
+  const restoreBackup = async () => {
+    const isNewDatabase = restoreMode === 'new';
+    const dbName = isNewDatabase ? newDatabaseName : targetDatabase;
+
+    if (!dbName.trim()) {
+      setMessage({ text: 'Please provide a database name ', type: 'error' });
+      return;
+    }
+
+    setRestoreLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE}/restore-backup`, {
+        filename: restoreDialog.filename,
+        target_database: isNewDatabase ? null : targetDatabase,
+        create_new: isNewDatabase,
+        new_database_name: isNewDatabase ? newDatabaseName : null,
+        password
+      });
+      setMessage({ text: response.data.success, type: 'success' });
+      if (response.data.databases) {
+        setDatabases(response.data.databases);
+      }
+      setRestoreDialog({ open: false, filename: '' });
+      setTargetDatabase('');
+      setNewDatabaseName('');
+      setRestoreMode('existing');
+    } catch (error) {
+      setMessage({ text: error.response?.data?.error || 'Restore failed ', type: 'error' });
+    }
+    setRestoreLoading(false);
+  };
+
+  const cloneDatabase = async () => {
+    if (!sourceCloneDatabase || !targetCloneDatabase.trim()) {
+      setMessage({ text: 'Please provide both source and target database names ', type: 'error' });
+      return;
+    }
+
+    if (sourceCloneDatabase === targetCloneDatabase) {
+      setMessage({ text: 'Source and target database names must be different ', type: 'error' });
+      return;
+    }
+
+    setCloneLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE}/clone-database`, {
+        source_database: sourceCloneDatabase,
+        target_database: targetCloneDatabase,
+        password
+      });
+      setMessage({ text: response.data.success, type: 'success' });
+      if (response.data.databases) {
+        setDatabases(response.data.databases);
+      }
+      setCloneDialog({ open: false });
+      setSourceCloneDatabase('');
+      setTargetCloneDatabase('');
+    } catch (error) {
+      setMessage({ text: error.response?.data?.error || 'Clone failed ', type: 'error' });
+    }
+    setCloneLoading(false);
   };
 
   if (!authenticated) {
@@ -302,7 +380,7 @@ const App = () => {
                 Ent<strong>Dev</strong>_DBs<span style={{ animation: 'blink 1s infinite' }}>|</span>
               </Typography>
               <Typography variant="h6" sx={{ mb: 3 }}>
-                🔐 Enter Password
+                Enter Password
               </Typography>
               <TextField
                 type={showPassword ? 'text' : 'password'}
@@ -374,7 +452,7 @@ const App = () => {
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                   <Computer sx={{ mr: 1 }} />
-                  🖥️ Server Data
+                   Server Data
                 </Typography>
                 <TableContainer>
                   <Table size="small">
@@ -402,7 +480,7 @@ const App = () => {
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                   <NetworkPing sx={{ mr: 1 }} />
-                  🛜 Flush Privileges
+                   Flush Privileges
                 </Typography>
                 <TextField
                   label="IP address or domain"
@@ -430,7 +508,7 @@ const App = () => {
               <CardContent>
                 <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
                   <Storage sx={{ mr: 1 }} />
-                  💾 Databases
+                   Databases
                 </Typography>
                 <TableContainer component={Paper} sx={{ mb: 2, maxHeight: 300 }}>
                   <Table stickyHeader>
@@ -479,6 +557,31 @@ const App = () => {
             </Card>
           </Grid>
 
+          {/* Database Cloning */}
+          <Grid item xs={12}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                    <FileCopy sx={{ mr: 1 }} />
+                     Clone Database
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    color="secondary"
+                    onClick={() => setCloneDialog({ open: true })}
+                    startIcon={<FileCopy />}
+                  >
+                    Clone Database
+                  </Button>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Create an exact copy of an existing database with all its data, structure, and objects.
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+
           {/* Database Backups */}
           <Grid item xs={12}>
             <Card>
@@ -486,7 +589,7 @@ const App = () => {
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                   <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
                     <Backup sx={{ mr: 1 }} />
-                    💾 Database Backups
+                     Database Backups
                   </Typography>
                   <Box>
                     <Button
@@ -536,7 +639,7 @@ const App = () => {
 
                 <Collapse in={showBackups}>
                   <Typography variant="subtitle1" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
-                    📦 Available Backups ({backups.length})
+                     Available Backups ({backups.length})
                   </Typography>
                   {backups.length > 0 ? (
                     <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
@@ -564,6 +667,14 @@ const App = () => {
                               <TableCell>{backup.created}</TableCell>
                               <TableCell align="right">
                                 <IconButton
+                                  color="success"
+                                  onClick={() => setRestoreDialog({ open: true, filename: backup.filename })}
+                                  size="small"
+                                  title="Restore backup"
+                                >
+                                  <Restore />
+                                </IconButton>
+                                <IconButton
                                   color="primary"
                                   onClick={() => downloadBackup(backup.filename)}
                                   size="small"
@@ -587,7 +698,7 @@ const App = () => {
                     </TableContainer>
                   ) : (
                     <Typography color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                      No backups found. Create your first backup above! 🚀
+                      No backups found. Create your first backup above! 
                     </Typography>
                   )}
                 </Collapse>
@@ -620,6 +731,170 @@ const App = () => {
               disabled={confirmDeleteName !== deleteDialog.dbName || loading}
             >
               {loading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Restore Backup Dialog */}
+        <Dialog 
+          open={restoreDialog.open} 
+          onClose={() => {
+            setRestoreDialog({ open: false, filename: '' });
+            setRestoreMode('existing');
+            setTargetDatabase('');
+            setNewDatabaseName('');
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+             Restore Backup: {restoreDialog.filename}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 1 }}>
+              <FormControl component="fieldset">
+                <FormLabel component="legend">Restore Mode</FormLabel>
+                <RadioGroup
+                  value={restoreMode}
+                  onChange={(e) => setRestoreMode(e.target.value)}
+                  sx={{ mt: 1 }}
+                >
+                  <FormControlLabel 
+                    value="existing" 
+                    control={<Radio />} 
+                    label="Restore to existing database" 
+                  />
+                  <FormControlLabel 
+                    value="new" 
+                    control={<Radio />} 
+                    label="Create new database and restore" 
+                  />
+                </RadioGroup>
+              </FormControl>
+
+              {restoreMode === 'existing' ? (
+                <FormControl fullWidth sx={{ mt: 2 }}>
+                  <InputLabel>Target Database</InputLabel>
+                  <Select
+                    value={targetDatabase}
+                    label="Target Database"
+                    onChange={(e) => setTargetDatabase(e.target.value)}
+                  >
+                    {databases.map((db) => (
+                      <MenuItem key={db} value={db}>
+                        {db}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              ) : (
+                <TextField
+                  margin="normal"
+                  label="New Database Name"
+                  fullWidth
+                  variant="outlined"
+                  value={newDatabaseName}
+                  onChange={(e) => setNewDatabaseName(e.target.value)}
+                  helperText="Only letters, numbers, and underscores allowed"
+                />
+              )}
+
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+                <Typography variant="body2" color="text.primary">
+                   <strong>Warning:</strong> This will {restoreMode === 'existing' ? 'overwrite all data in the target database' : 'create a new database'}. This action cannot be undone.
+                </Typography>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => {
+                setRestoreDialog({ open: false, filename: '' });
+                setRestoreMode('existing');
+                setTargetDatabase('');
+                setNewDatabaseName('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={restoreBackup}
+              color="success"
+              variant="contained"
+              disabled={restoreLoading || (restoreMode === 'existing' ? !targetDatabase : !newDatabaseName.trim())}
+              startIcon={<Restore />}
+            >
+              {restoreLoading ? 'Restoring...' : 'Restore'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Clone Database Dialog */}
+        <Dialog 
+          open={cloneDialog.open} 
+          onClose={() => {
+            setCloneDialog({ open: false });
+            setSourceCloneDatabase('');
+            setTargetCloneDatabase('');
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>
+             Clone Database
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ mt: 1 }}>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Source Database</InputLabel>
+                <Select
+                  value={sourceCloneDatabase}
+                  label="Source Database"
+                  onChange={(e) => setSourceCloneDatabase(e.target.value)}
+                >
+                  {databases.map((db) => (
+                    <MenuItem key={db} value={db}>
+                      {db}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <TextField
+                margin="normal"
+                label="Target Database Name"
+                fullWidth
+                variant="outlined"
+                value={targetCloneDatabase}
+                onChange={(e) => setTargetCloneDatabase(e.target.value)}
+                helperText="Only letters, numbers, and underscores allowed"
+              />
+
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                <Typography variant="body2" color="text.primary">
+                  ℹ <strong>Info:</strong> This will create an exact copy of the source database including all data, tables, views, procedures, and triggers.
+                </Typography>
+              </Box>
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button 
+              onClick={() => {
+                setCloneDialog({ open: false });
+                setSourceCloneDatabase('');
+                setTargetCloneDatabase('');
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={cloneDatabase}
+              color="secondary"
+              variant="contained"
+              disabled={cloneLoading || !sourceCloneDatabase || !targetCloneDatabase.trim()}
+              startIcon={<FileCopy />}
+            >
+              {cloneLoading ? 'Cloning...' : 'Clone'}
             </Button>
           </DialogActions>
         </Dialog>
