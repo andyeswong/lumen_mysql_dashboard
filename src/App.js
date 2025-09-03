@@ -34,7 +34,17 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
-  FormLabel
+  FormLabel,
+  Tabs,
+  Tab,
+  TextareaAutosize,
+  Pagination,
+  TableSortLabel,
+  Tooltip,
+  CircularProgress,
+  AccordionSummary,
+  AccordionDetails,
+  Accordion
 } from '@mui/material';
 import {
   Computer,
@@ -52,7 +62,14 @@ import {
   ExpandMore,
   ExpandLess,
   Restore,
-  FileCopy
+  FileCopy,
+  Search,
+  PlayArrow,
+  ViewList,
+  Schema,
+  Code,
+  TableView,
+  Description
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -82,31 +99,211 @@ const App = () => {
   const [sourceCloneDatabase, setSourceCloneDatabase] = useState('');
   const [targetCloneDatabase, setTargetCloneDatabase] = useState('');
   const [cloneLoading, setCloneLoading] = useState(false);
+  
+  // Database browser states
+  const [activeTab, setActiveTab] = useState(0);
+  const [selectedBrowserDatabase, setSelectedBrowserDatabase] = useState('');
+  const [tables, setTables] = useState([]);
+  const [selectedTable, setSelectedTable] = useState('');
+  const [tableStructure, setTableStructure] = useState(null);
+  const [tableData, setTableData] = useState([]);
+  const [tablePagination, setTablePagination] = useState({ current_page: 1, per_page: 50, total: 0, total_pages: 0 });
+  const [queryDatabase, setQueryDatabase] = useState('');
+  const [queryText, setQueryText] = useState('');
+  const [queryResults, setQueryResults] = useState(null);
+  const [queryLoading, setQueryLoading] = useState(false);
+  const [browserLoading, setBrowserLoading] = useState(false);
 
   const theme = createTheme({
     palette: {
       mode: darkMode ? 'dark' : 'light',
       primary: {
-        main: '#354f52',
+        main: darkMode ? '#00e676' : '#1976d2', // Bright green for dark, blue for light
+        dark: darkMode ? '#00c853' : '#1565c0',
+        light: darkMode ? '#66ffa6' : '#42a5f5',
       },
       secondary: {
-        main: '#cad2c5',
+        main: darkMode ? '#ff4081' : '#dc004e', // Pink accent for dark, red for light
+        dark: darkMode ? '#f50057' : '#9a0036',
+        light: darkMode ? '#ff79b0' : '#ff5983',
       },
       background: {
-        default: darkMode ? '#2f3e46' : '#ffffff',
-        paper: darkMode ? '#354f52' : '#f5f5f5',
+        default: darkMode ? '#0a0a0a' : '#f8fafc', // Very dark vs light gray
+        paper: darkMode ? '#1a1a1a' : '#ffffff', // Dark gray vs white
       },
+      surface: darkMode ? '#252525' : '#f1f5f9',
       text: {
-        primary: darkMode ? '#cad2c5' : '#2f3e46',
+        primary: darkMode ? '#e8eaed' : '#1e293b', // Light gray vs dark slate
+        secondary: darkMode ? '#9aa0a6' : '#64748b', // Medium gray
+      },
+      divider: darkMode ? '#3c4043' : '#e2e8f0',
+      // Custom colors for better dark mode experience
+      success: {
+        main: darkMode ? '#4caf50' : '#2e7d32',
+        light: darkMode ? '#81c784' : '#4caf50',
+        dark: darkMode ? '#388e3c' : '#1b5e20',
+      },
+      error: {
+        main: darkMode ? '#f44336' : '#d32f2f',
+        light: darkMode ? '#ef5350' : '#ef5350',
+        dark: darkMode ? '#c62828' : '#c62828',
+      },
+      warning: {
+        main: darkMode ? '#ff9800' : '#ed6c02',
+        light: darkMode ? '#ffb74d' : '#ff9800',
+        dark: darkMode ? '#f57c00' : '#e65100',
+      },
+      info: {
+        main: darkMode ? '#2196f3' : '#0288d1',
+        light: darkMode ? '#64b5f6' : '#03a9f4',
+        dark: darkMode ? '#1976d2' : '#01579b',
       },
     },
     typography: {
-      fontFamily: '"IBM Plex Mono", monospace',
+      fontFamily: '"IBM Plex Mono", "Roboto Mono", "Consolas", monospace',
       h4: {
         fontWeight: 600,
+        color: darkMode ? '#e8eaed' : '#1e293b',
       },
       h6: {
         fontWeight: 600,
+        color: darkMode ? '#e8eaed' : '#1e293b',
+      },
+      body1: {
+        color: darkMode ? '#e8eaed' : '#334155',
+      },
+      body2: {
+        color: darkMode ? '#9aa0a6' : '#64748b',
+      },
+    },
+    components: {
+      // Customize Material-UI components for better dark mode
+      MuiCard: {
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#1a1a1a' : '#ffffff',
+            border: darkMode ? '1px solid #3c4043' : '1px solid #e2e8f0',
+            boxShadow: darkMode 
+              ? '0 2px 8px rgba(0, 0, 0, 0.4)' 
+              : '0 1px 3px rgba(0, 0, 0, 0.1)',
+          },
+        },
+      },
+      MuiTableHead: {
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#252525' : '#f8fafc',
+          },
+        },
+      },
+      MuiTableCell: {
+        styleOverrides: {
+          root: {
+            borderColor: darkMode ? '#3c4043' : '#e2e8f0',
+            color: darkMode ? '#e8eaed' : '#1e293b',
+          },
+          head: {
+            backgroundColor: darkMode ? '#252525' : '#f8fafc',
+            color: darkMode ? '#e8eaed' : '#1e293b',
+            fontWeight: 600,
+          },
+        },
+      },
+      MuiChip: {
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#3c4043' : '#e2e8f0',
+            color: darkMode ? '#e8eaed' : '#1e293b',
+          },
+          filled: {
+            backgroundColor: darkMode ? '#00e676' : '#1976d2',
+            color: darkMode ? '#000000' : '#ffffff',
+          },
+        },
+      },
+      MuiTextField: {
+        styleOverrides: {
+          root: {
+            '& .MuiOutlinedInput-root': {
+              backgroundColor: darkMode ? '#252525' : '#ffffff',
+              '& fieldset': {
+                borderColor: darkMode ? '#3c4043' : '#e2e8f0',
+              },
+              '&:hover fieldset': {
+                borderColor: darkMode ? '#00e676' : '#1976d2',
+              },
+              '&.Mui-focused fieldset': {
+                borderColor: darkMode ? '#00e676' : '#1976d2',
+              },
+            },
+            '& .MuiInputLabel-root': {
+              color: darkMode ? '#9aa0a6' : '#64748b',
+            },
+          },
+        },
+      },
+      MuiButton: {
+        styleOverrides: {
+          contained: {
+            boxShadow: darkMode 
+              ? '0 2px 4px rgba(0, 0, 0, 0.3)' 
+              : '0 2px 4px rgba(0, 0, 0, 0.1)',
+            '&:hover': {
+              boxShadow: darkMode 
+                ? '0 4px 8px rgba(0, 0, 0, 0.4)' 
+                : '0 4px 8px rgba(0, 0, 0, 0.15)',
+            },
+          },
+        },
+      },
+      MuiAlert: {
+        styleOverrides: {
+          root: {
+            '&.MuiAlert-standardSuccess': {
+              backgroundColor: darkMode ? '#1b5e20' : '#e8f5e8',
+              color: darkMode ? '#4caf50' : '#2e7d32',
+            },
+            '&.MuiAlert-standardError': {
+              backgroundColor: darkMode ? '#b71c1c' : '#ffebee',
+              color: darkMode ? '#f44336' : '#c62828',
+            },
+            '&.MuiAlert-standardWarning': {
+              backgroundColor: darkMode ? '#e65100' : '#fff3e0',
+              color: darkMode ? '#ff9800' : '#ef6c00',
+            },
+            '&.MuiAlert-standardInfo': {
+              backgroundColor: darkMode ? '#0d47a1' : '#e3f2fd',
+              color: darkMode ? '#2196f3' : '#1976d2',
+            },
+          },
+        },
+      },
+      MuiAccordion: {
+        styleOverrides: {
+          root: {
+            backgroundColor: darkMode ? '#1a1a1a' : '#ffffff',
+            '&:before': {
+              backgroundColor: darkMode ? '#3c4043' : '#e2e8f0',
+            },
+          },
+        },
+      },
+      MuiTab: {
+        styleOverrides: {
+          root: {
+            color: darkMode ? '#9aa0a6' : '#64748b',
+            '&.Mui-selected': {
+              color: darkMode ? '#00e676' : '#1976d2',
+            },
+          },
+        },
+      },
+      MuiTabs: {
+        styleOverrides: {
+          indicator: {
+            backgroundColor: darkMode ? '#00e676' : '#1976d2',
+          },
+        },
       },
     },
   });
@@ -369,6 +566,111 @@ const App = () => {
     setCloneLoading(false);
   };
 
+  // Database browser functions
+  const fetchTables = async (database) => {
+    if (!database) return;
+    
+    setBrowserLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/database/${database}/tables`, {
+        headers: { 'X-Password': password }
+      });
+      setTables(response.data.tables);
+    } catch (error) {
+      setMessage({ text: 'Failed to fetch tables ', type: 'error' });
+    }
+    setBrowserLoading(false);
+  };
+
+  const fetchTableStructure = async (database, table) => {
+    if (!database || !table) return;
+    
+    setBrowserLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/database/${database}/table/${table}/structure`, {
+        headers: { 'X-Password': password }
+      });
+      setTableStructure(response.data);
+    } catch (error) {
+      setMessage({ text: 'Failed to fetch table structure ', type: 'error' });
+    }
+    setBrowserLoading(false);
+  };
+
+  const fetchTableData = async (database, table, page = 1, limit = 50) => {
+    if (!database || !table) return;
+    
+    setBrowserLoading(true);
+    try {
+      const response = await axios.get(`${API_BASE}/database/${database}/table/${table}/data`, {
+        headers: { 'X-Password': password },
+        params: { page, limit }
+      });
+      setTableData(response.data.data);
+      setTablePagination(response.data.pagination);
+    } catch (error) {
+      setMessage({ text: 'Failed to fetch table data ', type: 'error' });
+    }
+    setBrowserLoading(false);
+  };
+
+  const executeQuery = async () => {
+    if (!queryDatabase || !queryText.trim()) {
+      setMessage({ text: 'Please select a database and enter a query ', type: 'error' });
+      return;
+    }
+
+    setQueryLoading(true);
+    try {
+      const response = await axios.post(`${API_BASE}/query`, {
+        database: queryDatabase,
+        query: queryText,
+        password
+      });
+      setQueryResults(response.data);
+      setMessage({ text: `Query executed successfully! ${response.data.row_count} rows returned in ${response.data.execution_time_ms}ms `, type: 'success' });
+    } catch (error) {
+      setMessage({ text: error.response?.data?.error || 'Query execution failed ', type: 'error' });
+      setQueryResults(null);
+    }
+    setQueryLoading(false);
+  };
+
+  const handleTabChange = (event, newValue) => {
+    setActiveTab(newValue);
+    // Reset states when switching tabs
+    if (newValue === 1) { // Database Browser tab
+      setSelectedTable('');
+      setTableStructure(null);
+      setTableData([]);
+    } else if (newValue === 2) { // Query tab
+      setQueryResults(null);
+    }
+  };
+
+  const handleDatabaseSelect = (database) => {
+    setSelectedBrowserDatabase(database);
+    setSelectedTable('');
+    setTableStructure(null);
+    setTableData([]);
+    fetchTables(database);
+  };
+
+  const handleTableSelect = (table) => {
+    setSelectedTable(table);
+    fetchTableStructure(selectedBrowserDatabase, table);
+    fetchTableData(selectedBrowserDatabase, table);
+  };
+
+  const sampleQueries = [
+    'SELECT * FROM table_name LIMIT 10',
+    'SHOW TABLES',
+    'DESCRIBE table_name',
+    'SELECT COUNT(*) FROM table_name',
+    'SHOW CREATE TABLE table_name',
+    'SELECT COLUMN_NAME, DATA_TYPE FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE()'
+  ];
+
   if (!authenticated) {
     return (
       <ThemeProvider theme={theme}>
@@ -445,35 +747,45 @@ const App = () => {
           </IconButton>
         </Box>
 
-        <Grid container spacing={3}>
-          {/* Server Info */}
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                  <Computer sx={{ mr: 1 }} />
-                   Server Data
-                </Typography>
-                <TableContainer>
-                  <Table size="small">
-                    <TableBody>
-                      <TableRow>
-                        <TableCell><strong>IP</strong></TableCell>
-                        <TableCell>{serverInfo?.host}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Username</strong></TableCell>
-                        <TableCell>{serverInfo?.username}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Password</strong></TableCell>
-                        <TableCell>{serverInfo?.password}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </CardContent>
-            </Card>
+        {/* Main Tabs */}
+        <Card sx={{ mb: 3 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} sx={{ borderBottom: 1, borderColor: 'divider' }}>
+            <Tab icon={<Storage />} label="Database Management" />
+            <Tab icon={<Search />} label="Database Browser" />
+            <Tab icon={<Code />} label="Query Interface" />
+          </Tabs>
+        </Card>
+
+        {activeTab === 0 && (
+          <Grid container spacing={3}>
+            {/* Server Info */}
+            <Grid item xs={12} md={6}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Computer sx={{ mr: 1 }} />
+                     Server Data
+                  </Typography>
+                  <TableContainer>
+                    <Table size="small">
+                      <TableBody>
+                        <TableRow>
+                          <TableCell><strong>IP</strong></TableCell>
+                          <TableCell>{serverInfo?.host}</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell><strong>Username</strong></TableCell>
+                          <TableCell>{serverInfo?.username}</TableCell>
+                        </TableRow>
+                        <TableRow>
+                          <TableCell><strong>Password</strong></TableCell>
+                          <TableCell>{serverInfo?.password}</TableCell>
+                        </TableRow>
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
 
             {/* Flush Privileges */}
             <Card sx={{ mt: 2 }}>
@@ -706,6 +1018,394 @@ const App = () => {
             </Card>
           </Grid>
         </Grid>
+        )}
+
+        {/* Database Browser Tab */}
+        {activeTab === 1 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ViewList sx={{ mr: 1 }} />
+                     Select Database
+                  </Typography>
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Database</InputLabel>
+                    <Select
+                      value={selectedBrowserDatabase}
+                      label="Database"
+                      onChange={(e) => handleDatabaseSelect(e.target.value)}
+                    >
+                      {databases.map((db) => (
+                        <MenuItem key={db} value={db}>
+                          {db}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  {selectedBrowserDatabase && (
+                    <>
+                      <Typography variant="subtitle1" gutterBottom sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
+                        <TableView sx={{ mr: 1 }} />
+                         Tables ({tables.length})
+                      </Typography>
+                      {browserLoading ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', p: 2 }}>
+                          <CircularProgress size={24} />
+                        </Box>
+                      ) : (
+                        <TableContainer component={Paper} sx={{ maxHeight: 400 }}>
+                          <Table stickyHeader size="small">
+                            <TableHead>
+                              <TableRow>
+                                <TableCell><strong>Table</strong></TableCell>
+                                <TableCell><strong>Rows</strong></TableCell>
+                                <TableCell><strong>Size</strong></TableCell>
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {tables.map((table) => (
+                                <TableRow 
+                                  key={table.name}
+                                  hover
+                                  sx={{ cursor: 'pointer' }}
+                                  selected={selectedTable === table.name}
+                                  onClick={() => handleTableSelect(table.name)}
+                                >
+                                  <TableCell>{table.name}</TableCell>
+                                  <TableCell>{table.row_count?.toLocaleString() || '0'}</TableCell>
+                                  <TableCell>{table.size}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      )}
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} md={8}>
+              {selectedTable && (
+                <Grid container spacing={2}>
+                  {/* Table Structure */}
+                  <Grid item xs={12}>
+                    <Accordion defaultExpanded>
+                      <AccordionSummary expandIcon={<ExpandMore />}>
+                        <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Schema sx={{ mr: 1 }} />
+                           Table Structure: {selectedTable}
+                        </Typography>
+                      </AccordionSummary>
+                      <AccordionDetails>
+                        {tableStructure && (
+                          <TableContainer component={Paper}>
+                            <Table size="small">
+                              <TableHead>
+                                <TableRow>
+                                  <TableCell><strong>Column</strong></TableCell>
+                                  <TableCell><strong>Type</strong></TableCell>
+                                  <TableCell><strong>Null</strong></TableCell>
+                                  <TableCell><strong>Key</strong></TableCell>
+                                  <TableCell><strong>Default</strong></TableCell>
+                                  <TableCell><strong>Extra</strong></TableCell>
+                                </TableRow>
+                              </TableHead>
+                              <TableBody>
+                                {tableStructure.columns.map((column) => (
+                                  <TableRow key={column.name}>
+                                    <TableCell>
+                                      <Chip 
+                                        label={column.name} 
+                                        size="small" 
+                                        variant={column.key_type === 'PRI' ? 'filled' : 'outlined'}
+                                        color={column.key_type === 'PRI' ? 'primary' : 'default'}
+                                      />
+                                    </TableCell>
+                                    <TableCell>{column.type}</TableCell>
+                                    <TableCell>{column.nullable}</TableCell>
+                                    <TableCell>{column.key_type}</TableCell>
+                                    <TableCell>{column.default_value || 'NULL'}</TableCell>
+                                    <TableCell>{column.extra}</TableCell>
+                                  </TableRow>
+                                ))}
+                              </TableBody>
+                            </Table>
+                          </TableContainer>
+                        )}
+                      </AccordionDetails>
+                    </Accordion>
+                  </Grid>
+
+                  {/* Table Data */}
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                          <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center' }}>
+                            <Description sx={{ mr: 1 }} />
+                             Table Data
+                          </Typography>
+                          {tablePagination.total > 0 && (
+                            <Typography variant="body2" color="text.secondary">
+                              Showing {((tablePagination.current_page - 1) * tablePagination.per_page) + 1} - {Math.min(tablePagination.current_page * tablePagination.per_page, tablePagination.total)} of {tablePagination.total} rows
+                            </Typography>
+                          )}
+                        </Box>
+
+                        {browserLoading ? (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+                            <CircularProgress />
+                          </Box>
+                        ) : tableData.length > 0 ? (
+                          <>
+                            <TableContainer component={Paper} sx={{ maxHeight: 400, mb: 2 }}>
+                              <Table stickyHeader size="small">
+                                <TableHead>
+                                  <TableRow>
+                                    {Object.keys(tableData[0] || {}).map((column) => (
+                                      <TableCell key={column}>
+                                        <strong>{column}</strong>
+                                      </TableCell>
+                                    ))}
+                                  </TableRow>
+                                </TableHead>
+                                <TableBody>
+                                  {tableData.map((row, index) => (
+                                    <TableRow key={index}>
+                                      {Object.values(row).map((value, cellIndex) => (
+                                        <TableCell key={cellIndex}>
+                                          {value === null ? (
+                                            <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                              NULL
+                                            </Typography>
+                                          ) : (
+                                            String(value)
+                                          )}
+                                        </TableCell>
+                                      ))}
+                                    </TableRow>
+                                  ))}
+                                </TableBody>
+                              </Table>
+                            </TableContainer>
+
+                            {tablePagination.total_pages > 1 && (
+                              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                                <Pagination
+                                  count={tablePagination.total_pages}
+                                  page={tablePagination.current_page}
+                                  onChange={(event, page) => fetchTableData(selectedBrowserDatabase, selectedTable, page)}
+                                  color="primary"
+                                />
+                              </Box>
+                            )}
+                          </>
+                        ) : (
+                          <Typography color="text.secondary" sx={{ textAlign: 'center', p: 4 }}>
+                            No data found in this table
+                          </Typography>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              )}
+
+              {!selectedTable && selectedBrowserDatabase && (
+                <Card>
+                  <CardContent sx={{ textAlign: 'center', p: 4 }}>
+                    <TableView sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary">
+                      Select a table to view its structure and data
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+
+              {!selectedBrowserDatabase && (
+                <Card>
+                  <CardContent sx={{ textAlign: 'center', p: 4 }}>
+                    <Storage sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary">
+                      Select a database to browse its tables
+                    </Typography>
+                  </CardContent>
+                </Card>
+              )}
+            </Grid>
+          </Grid>
+        )}
+
+        {/* Query Interface Tab */}
+        {activeTab === 2 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Code sx={{ mr: 1 }} />
+                     SQL Query
+                  </Typography>
+                  
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Target Database</InputLabel>
+                    <Select
+                      value={queryDatabase}
+                      label="Target Database"
+                      onChange={(e) => setQueryDatabase(e.target.value)}
+                    >
+                      {databases.map((db) => (
+                        <MenuItem key={db} value={db}>
+                          {db}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Typography variant="subtitle2" gutterBottom>
+                    Query (Read-only)
+                  </Typography>
+                  <TextField
+                    multiline
+                    rows={8}
+                    value={queryText}
+                    onChange={(e) => setQueryText(e.target.value)}
+                    placeholder="Enter your SELECT query here..."
+                    fullWidth
+                    sx={{ mb: 2, fontFamily: 'monospace' }}
+                  />
+
+                  <Button
+                    variant="contained"
+                    onClick={executeQuery}
+                    disabled={queryLoading || !queryDatabase || !queryText.trim()}
+                    fullWidth
+                    startIcon={queryLoading ? <CircularProgress size={20} /> : <PlayArrow />}
+                    sx={{ mb: 2 }}
+                  >
+                    {queryLoading ? 'Executing...' : 'Execute Query'}
+                  </Button>
+
+                  <Typography variant="subtitle2" gutterBottom>
+                    Sample Queries
+                  </Typography>
+                  {sampleQueries.map((query, index) => (
+                    <Chip
+                      key={index}
+                      label={query}
+                      size="small"
+                      variant="outlined"
+                      sx={{ m: 0.5, fontFamily: 'monospace', fontSize: '0.75rem' }}
+                      onClick={() => setQueryText(query)}
+                      clickable
+                    />
+                  ))}
+
+                  <Box sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: darkMode ? 'rgba(33, 150, 243, 0.1)' : 'info.light', 
+                    border: darkMode ? '1px solid #2196f3' : 'none',
+                    borderRadius: 1 
+                  }}>
+                    <Typography variant="body2" color={darkMode ? '#64b5f6' : 'text.primary'}>
+                      ℹ <strong>Security Note:</strong> Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed. This interface is read-only.
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} md={8}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <ViewList sx={{ mr: 1 }} />
+                     Query Results
+                  </Typography>
+
+                  {queryResults ? (
+                    <>
+                      <Box sx={{ 
+                        mb: 2, 
+                        p: 2, 
+                        bgcolor: darkMode ? 'rgba(76, 175, 80, 0.1)' : 'success.light', 
+                        border: darkMode ? '1px solid #4caf50' : 'none',
+                        borderRadius: 1 
+                      }}>
+                        <Typography variant="body2" color={darkMode ? '#81c784' : 'text.primary'}>
+                          ✓ Query executed successfully! {queryResults.row_count} rows returned in {queryResults.execution_time_ms}ms
+                        </Typography>
+                        <Typography 
+                          variant="body2"  
+                          sx={{ 
+                            fontFamily: 'monospace', 
+                            mt: 1,
+                            color: darkMode ? '#e8eaed' : '#1e293b',
+                            backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                            p: 1,
+                            borderRadius: 1
+                          }}
+                        >
+                          {queryResults.query}
+                        </Typography>
+                      </Box>
+
+                      {queryResults.results.length > 0 ? (
+                        <TableContainer component={Paper} sx={{ maxHeight: 500 }}>
+                          <Table stickyHeader size="small">
+                            <TableHead>
+                              <TableRow>
+                                {Object.keys(queryResults.results[0]).map((column) => (
+                                  <TableCell key={column}>
+                                    <strong>{column}</strong>
+                                  </TableCell>
+                                ))}
+                              </TableRow>
+                            </TableHead>
+                            <TableBody>
+                              {queryResults.results.map((row, index) => (
+                                <TableRow key={index}>
+                                  {Object.values(row).map((value, cellIndex) => (
+                                    <TableCell key={cellIndex}>
+                                      {value === null ? (
+                                        <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                          NULL
+                                        </Typography>
+                                      ) : (
+                                        String(value)
+                                      )}
+                                    </TableCell>
+                                  ))}
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </TableContainer>
+                      ) : (
+                        <Typography color="text.secondary" sx={{ textAlign: 'center', p: 4 }}>
+                          Query executed successfully but returned no results
+                        </Typography>
+                      )}
+                    </>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', p: 4 }}>
+                      <Code sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="h6" color="text.secondary">
+                        Select a database and run a query to see results here
+                      </Typography>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
 
         {/* Delete Dialog */}
         <Dialog open={deleteDialog.open} onClose={() => setDeleteDialog({ open: false, dbName: '' })}>
@@ -799,11 +1499,17 @@ const App = () => {
                 />
               )}
 
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
-                <Typography variant="body2" color="text.primary">
-                   <strong>Warning:</strong> This will {restoreMode === 'existing' ? 'overwrite all data in the target database' : 'create a new database'}. This action cannot be undone.
-                </Typography>
-              </Box>
+                                <Box sx={{ 
+                    mt: 2, 
+                    p: 2, 
+                    bgcolor: darkMode ? 'rgba(255, 152, 0, 0.1)' : 'warning.light', 
+                    border: darkMode ? '1px solid #ff9800' : 'none',
+                    borderRadius: 1 
+                  }}>
+                    <Typography variant="body2" color={darkMode ? '#ff9800' : 'text.primary'}>
+                       <strong>Warning:</strong> This will {restoreMode === 'existing' ? 'overwrite all data in the target database' : 'create a new database'}. This action cannot be undone.
+                    </Typography>
+                  </Box>
             </Box>
           </DialogContent>
           <DialogActions>
@@ -870,8 +1576,14 @@ const App = () => {
                 helperText="Only letters, numbers, and underscores allowed"
               />
 
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-                <Typography variant="body2" color="text.primary">
+              <Box sx={{ 
+                mt: 2, 
+                p: 2, 
+                bgcolor: darkMode ? 'rgba(33, 150, 243, 0.1)' : 'info.light', 
+                border: darkMode ? '1px solid #2196f3' : 'none',
+                borderRadius: 1 
+              }}>
+                <Typography variant="body2" color={darkMode ? '#64b5f6' : 'text.primary'}>
                   ℹ <strong>Info:</strong> This will create an exact copy of the source database including all data, tables, views, procedures, and triggers.
                 </Typography>
               </Box>

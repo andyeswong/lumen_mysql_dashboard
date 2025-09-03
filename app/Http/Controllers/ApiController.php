@@ -595,4 +595,268 @@ class ApiController extends Controller
         $suffixes = array('B', 'KB', 'MB', 'GB', 'TB');
         return round(pow(1024, $base - floor($base)), $precision) . ' ' . $suffixes[floor($base)];
     }
+
+    public function getDatabaseTables(Request $request, $database)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Validate database name
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database)) {
+            return response()->json(['error' => 'Invalid database name'], 400);
+        }
+
+        try {
+            // Check if database exists and is not a system database
+            $allowedDatabases = $this->getFilteredDatabases();
+            if (!in_array($database, $allowedDatabases)) {
+                return response()->json(['error' => 'Database not found or not accessible'], 404);
+            }
+
+            $tables = DB::select("SELECT 
+                TABLE_NAME as name,
+                TABLE_TYPE as type,
+                ENGINE as engine,
+                TABLE_ROWS as row_count,
+                DATA_LENGTH as data_length,
+                INDEX_LENGTH as index_length,
+                CREATE_TIME as created_at,
+                UPDATE_TIME as updated_at
+                FROM information_schema.TABLES 
+                WHERE TABLE_SCHEMA = ? 
+                ORDER BY TABLE_NAME", [$database]);
+
+            // Format the data
+            $formattedTables = array_map(function($table) {
+                return [
+                    'name' => $table->name,
+                    'type' => $table->type,
+                    'engine' => $table->engine,
+                    'row_count' => $table->row_count ?: 0,
+                    'size' => $this->formatBytes(($table->data_length ?: 0) + ($table->index_length ?: 0)),
+                    'created_at' => $table->created_at,
+                    'updated_at' => $table->updated_at
+                ];
+            }, $tables);
+
+            return response()->json([
+                'success' => true,
+                'database' => $database,
+                'tables' => $formattedTables
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch tables: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function getTableStructure(Request $request, $database, $table)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Validate names
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database) || !preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+            return response()->json(['error' => 'Invalid database or table name'], 400);
+        }
+
+        try {
+            // Check if database exists and is accessible
+            $allowedDatabases = $this->getFilteredDatabases();
+            if (!in_array($database, $allowedDatabases)) {
+                return response()->json(['error' => 'Database not found or not accessible'], 404);
+            }
+
+            // Get table structure
+            $columns = DB::select("SELECT 
+                COLUMN_NAME as name,
+                DATA_TYPE as type,
+                IS_NULLABLE as nullable,
+                COLUMN_DEFAULT as default_value,
+                COLUMN_KEY as key_type,
+                EXTRA as extra,
+                COLUMN_COMMENT as comment
+                FROM information_schema.COLUMNS 
+                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                ORDER BY ORDINAL_POSITION", [$database, $table]);
+
+            // Get indexes
+            $indexes = DB::select("SELECT 
+                INDEX_NAME as name,
+                COLUMN_NAME as column_name,
+                NON_UNIQUE as non_unique,
+                INDEX_TYPE as type
+                FROM information_schema.STATISTICS 
+                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+                ORDER BY INDEX_NAME, SEQ_IN_INDEX", [$database, $table]);
+
+            return response()->json([
+                'success' => true,
+                'database' => $database,
+                'table' => $table,
+                'columns' => $columns,
+                'indexes' => $indexes
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Failed to fetch table structure: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function getTableData(Request $request, $database, $table)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        // Validate names
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database) || !preg_match('/^[a-zA-Z0-9_]+$/', $table)) {
+            return response()->json(['error' => 'Invalid database or table name'], 400);
+        }
+
+        $page = max(1, (int)$request->get('page', 1));
+        $limit = min(100, max(10, (int)$request->get('limit', 50))); // Max 100 rows per page
+        $offset = ($page - 1) * $limit;
+
+        try {
+            // Check if database exists and is accessible
+            $allowedDatabases = $this->getFilteredDatabases();
+            if (!in_array($database, $allowedDatabases)) {
+                return response()->json(['error' => 'Database not found or not accessible'], 404);
+            }
+
+            // Switch to the target database temporarily
+            $currentDb = env('DB_DATABASE');
+            config(['database.connections.mysql.database' => $database]);
+            DB::purge('mysql');
+
+            // Get total count
+            $totalCount = DB::selectOne("SELECT COUNT(*) as count FROM `{$table}`")->count;
+
+            // Get data with pagination
+            $data = DB::select("SELECT * FROM `{$table}` LIMIT {$limit} OFFSET {$offset}");
+
+            // Convert to array for easier handling
+            $rows = array_map(function($row) {
+                return (array)$row;
+            }, $data);
+
+            // Switch back to original database
+            config(['database.connections.mysql.database' => $currentDb]);
+            DB::purge('mysql');
+
+            return response()->json([
+                'success' => true,
+                'database' => $database,
+                'table' => $table,
+                'data' => $rows,
+                'pagination' => [
+                    'current_page' => $page,
+                    'per_page' => $limit,
+                    'total' => $totalCount,
+                    'total_pages' => ceil($totalCount / $limit)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            // Make sure to switch back to original database on error
+            config(['database.connections.mysql.database' => $currentDb ?? env('DB_DATABASE')]);
+            DB::purge('mysql');
+            
+            return response()->json(['error' => 'Failed to fetch table data: ' . $e->getMessage()], 500);
+        }
+    }
+
+    public function executeQuery(Request $request)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'database' => 'required|string',
+            'query' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => 'Database and query are required'], 400);
+        }
+
+        $database = $request->input('database');
+        $query = trim($request->input('query'));
+
+        // Validate database name
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database)) {
+            return response()->json(['error' => 'Invalid database name'], 400);
+        }
+
+        // Check if database is accessible
+        $allowedDatabases = $this->getFilteredDatabases();
+        if (!in_array($database, $allowedDatabases)) {
+            return response()->json(['error' => 'Database not found or not accessible'], 404);
+        }
+
+        // Security: Only allow SELECT queries and some safe SHOW/DESCRIBE commands
+        $allowedPatterns = [
+            '/^SELECT\s+/i',
+            '/^SHOW\s+/i',
+            '/^DESCRIBE\s+/i',
+            '/^DESC\s+/i',
+            '/^EXPLAIN\s+/i'
+        ];
+
+        $isAllowed = false;
+        foreach ($allowedPatterns as $pattern) {
+            if (preg_match($pattern, $query)) {
+                $isAllowed = true;
+                break;
+            }
+        }
+
+        if (!$isAllowed) {
+            return response()->json(['error' => 'Only SELECT, SHOW, DESCRIBE, and EXPLAIN queries are allowed'], 400);
+        }
+
+        // Additional security: Check for dangerous keywords
+        $dangerousKeywords = ['DELETE', 'UPDATE', 'INSERT', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE', 'REPLACE'];
+        $upperQuery = strtoupper($query);
+        foreach ($dangerousKeywords as $keyword) {
+            if (strpos($upperQuery, $keyword) !== false) {
+                return response()->json(['error' => 'Query contains forbidden keywords'], 400);
+            }
+        }
+
+        try {
+            $currentDb = env('DB_DATABASE');
+            config(['database.connections.mysql.database' => $database]);
+            DB::purge('mysql');
+
+            $startTime = microtime(true);
+            $results = DB::select($query);
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2); // milliseconds
+
+            // Convert to array for easier handling
+            $rows = array_map(function($row) {
+                return (array)$row;
+            }, $results);
+
+            // Switch back to original database
+            config(['database.connections.mysql.database' => $currentDb]);
+            DB::purge('mysql');
+
+            return response()->json([
+                'success' => true,
+                'database' => $database,
+                'query' => $query,
+                'results' => $rows,
+                'row_count' => count($rows),
+                'execution_time_ms' => $executionTime
+            ]);
+        } catch (\Exception $e) {
+            // Switch back to original database on error
+            config(['database.connections.mysql.database' => $currentDb ?? env('DB_DATABASE')]);
+            DB::purge('mysql');
+            
+            return response()->json(['error' => 'Query execution failed: ' . $e->getMessage()], 500);
+        }
+    }
 }
