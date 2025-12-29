@@ -859,4 +859,303 @@ class ApiController extends Controller
             return response()->json(['error' => 'Query execution failed: ' . $e->getMessage()], 500);
         }
     }
+
+    public function generateAIContext(Request $request)
+    {
+        if (!$this->isAuthenticated($request)) {
+            return response()->json(['error' => 'Unauthorized'], 401);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'database' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['error' => 'Database name is required'], 400);
+        }
+
+        $database = $request->input('database');
+
+        // Validate database name
+        if (!preg_match('/^[a-zA-Z0-9_]+$/', $database)) {
+            return response()->json(['error' => 'Invalid database name'], 400);
+        }
+
+        // Check if database is accessible
+        $allowedDatabases = $this->getFilteredDatabases();
+        if (!in_array($database, $allowedDatabases)) {
+            return response()->json(['error' => 'Database not found or not accessible'], 404);
+        }
+
+        try {
+            // Step 1: Get all tables
+            $currentDb = env('DB_DATABASE');
+            config(['database.connections.mysql.database' => $database]);
+            DB::purge('mysql');
+
+            $tables = DB::select("SELECT table_name, table_comment FROM information_schema.tables WHERE table_schema = ?", [$database]);
+
+            if (empty($tables)) {
+                config(['database.connections.mysql.database' => $currentDb]);
+                DB::purge('mysql');
+                return response()->json(['error' => 'No tables found in this database'], 404);
+            }
+
+            // Step 2: Gather metadata for each table
+            $tablesMetadata = [];
+            foreach ($tables as $tableInfo) {
+                $tableName = $tableInfo->table_name;
+                $tableComment = $tableInfo->table_comment ?? '';
+
+                // A. Get CREATE TABLE statement
+                $createTableResult = DB::select("SHOW CREATE TABLE `{$tableName}`");
+                $createStatement = $createTableResult[0]->{'Create Table'} ?? '';
+
+                // B. Get column metadata
+                $columns = DB::select("SHOW FULL COLUMNS FROM `{$tableName}`");
+
+                // C. Get sample data (limit 3 rows)
+                $sampleData = DB::select("SELECT * FROM `{$tableName}` LIMIT 3");
+                $sampleDataArray = array_map(function($row) {
+                    return (array)$row;
+                }, $sampleData);
+
+                $tablesMetadata[] = [
+                    'table_name' => $tableName,
+                    'table_comment' => $tableComment,
+                    'create_statement' => $createStatement,
+                    'columns' => $columns,
+                    'sample_data' => $sampleDataArray
+                ];
+            }
+
+            // Switch back to original database
+            config(['database.connections.mysql.database' => $currentDb]);
+            DB::purge('mysql');
+
+            // Step 3: Generate context from metadata
+            $context = $this->generateContextFromMetadata($database, $tablesMetadata);
+
+            return response()->json([
+                'success' => true,
+                'database' => $database,
+                'context' => $context
+            ]);
+
+        } catch (\Exception $e) {
+            // Switch back to original database on error
+            config(['database.connections.mysql.database' => $currentDb ?? env('DB_DATABASE')]);
+            DB::purge('mysql');
+
+            return response()->json(['error' => 'Failed to generate AI context: ' . $e->getMessage()], 500);
+        }
+    }
+
+    private function generateContextFromMetadata($database, $tablesMetadata)
+    {
+        $tables = [];
+
+        foreach ($tablesMetadata as $tableInfo) {
+            $tableName = $tableInfo['table_name'];
+            $createStatement = $tableInfo['create_statement'];
+            $columns = $tableInfo['columns'];
+            $sampleData = $tableInfo['sample_data'];
+
+            // Extract foreign key relationships from CREATE TABLE
+            $relationships = [];
+            if (preg_match_all('/FOREIGN KEY \(`([^`]+)`\) REFERENCES `([^`]+)` \(`([^`]+)`\)/i', $createStatement, $matches, PREG_SET_ORDER)) {
+                foreach ($matches as $match) {
+                    $relationships[] = "FOREIGN KEY ({$match[1]}) REFERENCES {$match[2]}({$match[3]})";
+                }
+            }
+
+            // Generate table description
+            $tableDescription = $this->generateTableDescription($tableName, $tableInfo['table_comment'], $columns);
+
+            // Process columns
+            $processedColumns = [];
+            foreach ($columns as $column) {
+                $columnName = $column->Field;
+                $columnType = $column->Type;
+                $isNullable = strtoupper($column->Null) === 'YES';
+
+                $processedColumns[] = [
+                    'name' => $columnName,
+                    'description' => $this->generateColumnDescription($columnName, $columnType, $column),
+                    'synonyms' => $this->generateColumnSynonyms($columnName),
+                    'type' => $columnType,
+                    'nullable' => $isNullable
+                ];
+            }
+
+            // Generate sample queries
+            $sampleQueries = $this->generateSampleQueries($database, $tableName, $columns);
+
+            $tables[] = [
+                'name' => "{$database}.{$tableName}",
+                'schema' => $createStatement,
+                'description' => $tableDescription,
+                'columns' => $processedColumns,
+                'relationships' => $relationships,
+                'sample_data' => $sampleData,
+                'sample_queries' => $sampleQueries
+            ];
+        }
+
+        return ['tables' => $tables];
+    }
+
+    private function generateTableDescription($tableName, $tableComment, $columns)
+    {
+        if (!empty($tableComment)) {
+            return $tableComment;
+        }
+
+        // Generate description based on table name
+        $words = preg_split('/[_-]/', $tableName);
+        $words = array_map('ucfirst', $words);
+
+        return "Stores " . strtolower(implode(' ', $words)) . " information with " . count($columns) . " columns.";
+    }
+
+    private function generateColumnDescription($columnName, $columnType, $column)
+    {
+        if (!empty($column->Comment)) {
+            return $column->Comment;
+        }
+
+        // Generate description based on column name and type
+        $name = str_replace('_', ' ', $columnName);
+
+        if (stripos($columnName, 'id') !== false) {
+            if ($columnName === 'id') {
+                return "Unique identifier for this record";
+            }
+            return "Foreign key reference to " . str_replace('_id', '', $columnName);
+        }
+
+        if (stripos($columnName, 'name') !== false) {
+            return "Name of the " . str_replace('_name', '', $columnName);
+        }
+
+        if (stripos($columnName, 'email') !== false) {
+            return "Email address";
+        }
+
+        if (stripos($columnName, 'password') !== false) {
+            return "Encrypted password";
+        }
+
+        if (stripos($columnName, 'created_at') !== false) {
+            return "Timestamp when the record was created";
+        }
+
+        if (stripos($columnName, 'updated_at') !== false) {
+            return "Timestamp when the record was last updated";
+        }
+
+        if (stripos($columnName, 'date') !== false) {
+            return "Date value for " . str_replace('_date', '', $columnName);
+        }
+
+        if (stripos($columnName, 'status') !== false) {
+            return "Current status";
+        }
+
+        if (stripos($columnName, 'type') !== false) {
+            return "Type classification";
+        }
+
+        if (stripos($columnName, 'count') !== false || stripos($columnName, 'total') !== false) {
+            return "Numeric count or total";
+        }
+
+        return "Stores " . $name . " data";
+    }
+
+    private function generateColumnSynonyms($columnName)
+    {
+        $synonyms = [];
+
+        // Common synonyms
+        $synonymMap = [
+            'id' => ['identifier', 'key', 'primary_key'],
+            'name' => ['title', 'label', 'description'],
+            'email' => ['email_address', 'mail'],
+            'phone' => ['telephone', 'phone_number', 'contact'],
+            'address' => ['location', 'street_address'],
+            'created_at' => ['created', 'creation_date', 'date_created'],
+            'updated_at' => ['updated', 'modified', 'last_modified'],
+            'deleted_at' => ['deleted', 'removed'],
+            'status' => ['state', 'condition'],
+            'type' => ['category', 'classification'],
+            'description' => ['desc', 'details', 'notes'],
+            'price' => ['cost', 'amount'],
+            'quantity' => ['qty', 'amount', 'count'],
+            'user_id' => ['user', 'owner_id', 'created_by']
+        ];
+
+        $lowerName = strtolower($columnName);
+
+        foreach ($synonymMap as $key => $syns) {
+            if (stripos($lowerName, $key) !== false) {
+                $synonyms = array_merge($synonyms, $syns);
+            }
+        }
+
+        // Add variations of the column name
+        if (strpos($columnName, '_') !== false) {
+            $parts = explode('_', $columnName);
+            $camelCase = $parts[0] . implode('', array_map('ucfirst', array_slice($parts, 1)));
+            $synonyms[] = $camelCase;
+        }
+
+        return array_unique(array_slice($synonyms, 0, 5));
+    }
+
+    private function generateSampleQueries($database, $tableName, $columns)
+    {
+        $queries = [];
+
+        // Basic SELECT query
+        $queries[] = [
+            'query' => "SELECT * FROM `{$tableName}` LIMIT 10;",
+            'intent' => "Retrieve the first 10 records from {$tableName}"
+        ];
+
+        // Find primary key
+        $primaryKey = null;
+        foreach ($columns as $column) {
+            if ($column->Key === 'PRI') {
+                $primaryKey = $column->Field;
+                break;
+            }
+        }
+
+        if ($primaryKey) {
+            $queries[] = [
+                'query' => "SELECT * FROM `{$tableName}` WHERE `{$primaryKey}` = 1;",
+                'intent' => "Find a specific record by its {$primaryKey}"
+            ];
+        }
+
+        // Look for common filter columns
+        foreach ($columns as $column) {
+            if (stripos($column->Field, 'status') !== false) {
+                $queries[] = [
+                    'query' => "SELECT * FROM `{$tableName}` WHERE `{$column->Field}` = 'active';",
+                    'intent' => "Filter records by {$column->Field}"
+                ];
+                break;
+            }
+        }
+
+        // COUNT query
+        $queries[] = [
+            'query' => "SELECT COUNT(*) as total FROM `{$tableName}`;",
+            'intent' => "Count the total number of records in {$tableName}"
+        ];
+
+        return array_slice($queries, 0, 3);
+    }
 }

@@ -69,7 +69,8 @@ import {
   Schema,
   Code,
   TableView,
-  Description
+  Description,
+  Psychology
 } from '@mui/icons-material';
 import axios from 'axios';
 
@@ -113,6 +114,11 @@ const App = () => {
   const [queryResults, setQueryResults] = useState(null);
   const [queryLoading, setQueryLoading] = useState(false);
   const [browserLoading, setBrowserLoading] = useState(false);
+
+  // AI Context Generation states
+  const [aiContextDatabase, setAiContextDatabase] = useState('');
+  const [aiContext, setAiContext] = useState(null);
+  const [aiContextLoading, setAiContextLoading] = useState(false);
 
   const theme = createTheme({
     palette: {
@@ -636,6 +642,46 @@ const App = () => {
     setQueryLoading(false);
   };
 
+  const generateAIContext = async () => {
+    if (!aiContextDatabase) {
+      setMessage({ text: 'Please select a database ', type: 'error' });
+      return;
+    }
+
+    setAiContextLoading(true);
+    setAiContext(null);
+    try {
+      const response = await axios.post(`${API_BASE}/generate-ai-context`, {
+        database: aiContextDatabase,
+        password
+      }, {
+        headers: {
+          'X-Password': password
+        }
+      });
+      setAiContext(response.data.context);
+      setMessage({ text: `Context generated successfully for database: ${aiContextDatabase}`, type: 'success' });
+    } catch (error) {
+      setMessage({ text: error.response?.data?.error || 'Failed to generate context ', type: 'error' });
+      setAiContext(null);
+    }
+    setAiContextLoading(false);
+  };
+
+  const downloadAIContext = () => {
+    if (!aiContext) return;
+
+    const blob = new Blob([JSON.stringify(aiContext, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${aiContextDatabase}_ai_context.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleTabChange = (event, newValue) => {
     setActiveTab(newValue);
     // Reset states when switching tabs
@@ -645,6 +691,8 @@ const App = () => {
       setTableData([]);
     } else if (newValue === 2) { // Query tab
       setQueryResults(null);
+    } else if (newValue === 3) { // AI Context tab
+      setAiContext(null);
     }
   };
 
@@ -753,6 +801,7 @@ const App = () => {
             <Tab icon={<Storage />} label="Database Management" />
             <Tab icon={<Search />} label="Database Browser" />
             <Tab icon={<Code />} label="Query Interface" />
+            <Tab icon={<Psychology />} label="Context Generator" />
           </Tabs>
         </Card>
 
@@ -1398,6 +1447,274 @@ const App = () => {
                       <Code sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
                       <Typography variant="h6" color="text.secondary">
                         Select a database and run a query to see results here
+                      </Typography>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        )}
+
+        {/* AI Context Generation Tab */}
+        {activeTab === 3 && (
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Psychology sx={{ mr: 1 }} />
+                     Database Context Generator
+                  </Typography>
+
+                  <FormControl fullWidth sx={{ mb: 2 }}>
+                    <InputLabel>Select Database</InputLabel>
+                    <Select
+                      value={aiContextDatabase}
+                      label="Select Database"
+                      onChange={(e) => setAiContextDatabase(e.target.value)}
+                      disabled={aiContextLoading}
+                    >
+                      {databases.map((db) => (
+                        <MenuItem key={db} value={db}>
+                          {db}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={generateAIContext}
+                    disabled={aiContextLoading || !aiContextDatabase}
+                    startIcon={aiContextLoading ? <CircularProgress size={20} /> : <Psychology />}
+                  >
+                    {aiContextLoading ? 'Generating Context...' : 'Generate Context'}
+                  </Button>
+
+                  {aiContext && (
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      onClick={downloadAIContext}
+                      startIcon={<Download />}
+                      sx={{ mt: 2 }}
+                    >
+                      Download JSON
+                    </Button>
+                  )}
+
+                  <Box sx={{ mt: 3, p: 2, backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', borderRadius: 1 }}>
+                    <Typography variant="body2" color="text.secondary">
+                      This feature generates comprehensive documentation for your database including:
+                    </Typography>
+                    <ul style={{ margin: '8px 0', paddingLeft: '20px', color: darkMode ? '#9aa0a6' : '#64748b', fontSize: '0.875rem' }}>
+                      <li>Table and column descriptions</li>
+                      <li>Column synonyms for better search</li>
+                      <li>Relationship mappings (foreign keys)</li>
+                      <li>Sample queries with explanations</li>
+                      <li>Sample data from each table</li>
+                    </ul>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+
+            <Grid item xs={12} md={8}>
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Description sx={{ mr: 1 }} />
+                     Generated Context
+                  </Typography>
+
+                  {aiContextLoading && (
+                    <Box sx={{ textAlign: 'center', p: 4 }}>
+                      <CircularProgress size={48} />
+                      <Typography variant="body1" sx={{ mt: 2 }}>
+                        Analyzing database structure and generating context...
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Please wait while we process your database
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {aiContext && !aiContextLoading && (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Total Tables: {aiContext.tables?.length || 0}
+                      </Typography>
+
+                      {aiContext.tables?.map((table, index) => (
+                        <Accordion key={index} sx={{ mb: 2 }}>
+                          <AccordionSummary expandIcon={<ExpandMore />}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                              <TableView sx={{ mr: 1 }} />
+                              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                                {table.name}
+                              </Typography>
+                            </Box>
+                          </AccordionSummary>
+                          <AccordionDetails>
+                            <Box sx={{ mb: 2 }}>
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Description:</strong>
+                              </Typography>
+                              <Typography variant="body2" sx={{ mb: 2 }}>
+                                {table.description}
+                              </Typography>
+
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Columns ({table.columns?.length || 0}):</strong>
+                              </Typography>
+                              <TableContainer component={Paper} sx={{ mb: 2, maxHeight: 300 }}>
+                                <Table size="small">
+                                  <TableHead>
+                                    <TableRow>
+                                      <TableCell><strong>Column</strong></TableCell>
+                                      <TableCell><strong>Type</strong></TableCell>
+                                      <TableCell><strong>Nullable</strong></TableCell>
+                                      <TableCell><strong>Description</strong></TableCell>
+                                      <TableCell><strong>Synonyms</strong></TableCell>
+                                    </TableRow>
+                                  </TableHead>
+                                  <TableBody>
+                                    {table.columns?.map((column, colIndex) => (
+                                      <TableRow key={colIndex}>
+                                        <TableCell>{column.name}</TableCell>
+                                        <TableCell>{column.type}</TableCell>
+                                        <TableCell>{column.nullable ? 'Yes' : 'No'}</TableCell>
+                                        <TableCell>{column.description}</TableCell>
+                                        <TableCell>
+                                          {column.synonyms?.map((syn, synIndex) => (
+                                            <Chip
+                                              key={synIndex}
+                                              label={syn}
+                                              size="small"
+                                              sx={{ mr: 0.5, mb: 0.5 }}
+                                            />
+                                          ))}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))}
+                                  </TableBody>
+                                </Table>
+                              </TableContainer>
+
+                              {table.relationships && table.relationships.length > 0 && (
+                                <>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    <strong>Relationships:</strong>
+                                  </Typography>
+                                  <Box sx={{ mb: 2, p: 1, backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)', borderRadius: 1 }}>
+                                    {table.relationships.map((rel, relIndex) => (
+                                      <Typography key={relIndex} variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.75rem', mb: 0.5 }}>
+                                        {rel}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                </>
+                              )}
+
+                              {table.sample_queries && table.sample_queries.length > 0 && (
+                                <>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    <strong>Sample Queries:</strong>
+                                  </Typography>
+                                  {table.sample_queries.map((queryItem, qIndex) => (
+                                    <Box key={qIndex} sx={{ mb: 2 }}>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {queryItem.intent}
+                                      </Typography>
+                                      <Box sx={{
+                                        p: 1,
+                                        backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                                        borderRadius: 1,
+                                        fontFamily: 'monospace',
+                                        fontSize: '0.75rem',
+                                        whiteSpace: 'pre-wrap',
+                                        wordBreak: 'break-word'
+                                      }}>
+                                        {queryItem.query}
+                                      </Box>
+                                    </Box>
+                                  ))}
+                                </>
+                              )}
+
+                              {table.sample_data && table.sample_data.length > 0 && (
+                                <>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    <strong>Sample Data ({table.sample_data.length} rows):</strong>
+                                  </Typography>
+                                  <TableContainer component={Paper} sx={{ maxHeight: 300 }}>
+                                    <Table size="small">
+                                      <TableHead>
+                                        <TableRow>
+                                          {Object.keys(table.sample_data[0] || {}).map((key, keyIndex) => (
+                                            <TableCell key={keyIndex}><strong>{key}</strong></TableCell>
+                                          ))}
+                                        </TableRow>
+                                      </TableHead>
+                                      <TableBody>
+                                        {table.sample_data.map((row, rowIndex) => (
+                                          <TableRow key={rowIndex}>
+                                            {Object.values(row).map((value, valIndex) => (
+                                              <TableCell key={valIndex}>
+                                                {value === null ? (
+                                                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                                    NULL
+                                                  </Typography>
+                                                ) : (
+                                                  String(value)
+                                                )}
+                                              </TableCell>
+                                            ))}
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
+                                  </TableContainer>
+                                </>
+                              )}
+
+                              <Accordion sx={{ mt: 2 }}>
+                                <AccordionSummary expandIcon={<ExpandMore />}>
+                                  <Typography variant="body2">View Full Schema</Typography>
+                                </AccordionSummary>
+                                <AccordionDetails>
+                                  <Box sx={{
+                                    p: 1,
+                                    backgroundColor: darkMode ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+                                    borderRadius: 1,
+                                    fontFamily: 'monospace',
+                                    fontSize: '0.75rem',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                    maxHeight: 400,
+                                    overflow: 'auto'
+                                  }}>
+                                    {table.schema}
+                                  </Box>
+                                </AccordionDetails>
+                              </Accordion>
+                            </Box>
+                          </AccordionDetails>
+                        </Accordion>
+                      ))}
+                    </Box>
+                  )}
+
+                  {!aiContext && !aiContextLoading && (
+                    <Box sx={{ textAlign: 'center', p: 4 }}>
+                      <Psychology sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                      <Typography variant="h6" color="text.secondary">
+                        Select a database and generate context
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        Analyze your database structure and create comprehensive documentation
                       </Typography>
                     </Box>
                   )}

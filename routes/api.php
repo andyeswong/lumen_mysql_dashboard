@@ -34,4 +34,7 @@ $router->group(['prefix' => 'api'], function () use ($router) {
     $router->get('/database/{database}/table/{table}/structure', 'ApiController@getTableStructure');
     $router->get('/database/{database}/table/{table}/data', 'ApiController@getTableData');
     $router->post('/query', 'ApiController@executeQuery');
+
+    // AI Context Generation
+    $router->post('/generate-ai-context', 'ApiController@generateAIContext');
 });
