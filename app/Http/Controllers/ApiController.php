@@ -920,12 +920,18 @@ class ApiController extends Controller
                     return (array)$row;
                 }, $sampleData);
 
+                // Clean all data to UTF-8
+                $cleanedColumns = $this->utf8ize($columns);
+                $cleanedSampleData = $this->utf8ize($sampleDataArray);
+                $cleanedCreateStatement = $this->utf8ize($createStatement);
+                $cleanedTableComment = $this->utf8ize($tableComment);
+
                 $tablesMetadata[] = [
                     'table_name' => $tableName,
-                    'table_comment' => $tableComment,
-                    'create_statement' => $createStatement,
-                    'columns' => $columns,
-                    'sample_data' => $sampleDataArray
+                    'table_comment' => $cleanedTableComment,
+                    'create_statement' => $cleanedCreateStatement,
+                    'columns' => $cleanedColumns,
+                    'sample_data' => $cleanedSampleData
                 ];
             }
 
@@ -935,6 +941,12 @@ class ApiController extends Controller
 
             // Step 3: Generate context from metadata
             $context = $this->generateContextFromMetadata($database, $tablesMetadata);
+
+            // Ensure the context can be JSON encoded
+            $jsonTest = json_encode($context);
+            if ($jsonTest === false) {
+                throw new \Exception('Failed to encode context as JSON: ' . json_last_error_msg());
+            }
 
             return response()->json([
                 'success' => true,
@@ -949,6 +961,34 @@ class ApiController extends Controller
 
             return response()->json(['error' => 'Failed to generate AI context: ' . $e->getMessage()], 500);
         }
+    }
+
+    private function utf8ize($data)
+    {
+        if (is_array($data)) {
+            foreach ($data as $key => $value) {
+                $data[$key] = $this->utf8ize($value);
+            }
+        } elseif (is_object($data)) {
+            foreach ($data as $key => $value) {
+                $data->$key = $this->utf8ize($value);
+            }
+        } elseif (is_string($data)) {
+            // Check if string is valid UTF-8
+            if (!mb_check_encoding($data, 'UTF-8')) {
+                // Try to convert from various encodings
+                $encodings = ['UTF-8', 'ISO-8859-1', 'Windows-1252', 'ASCII'];
+                foreach ($encodings as $encoding) {
+                    $converted = @iconv($encoding, 'UTF-8//IGNORE', $data);
+                    if ($converted !== false && mb_check_encoding($converted, 'UTF-8')) {
+                        return $converted;
+                    }
+                }
+                // If all else fails, remove invalid characters
+                return mb_convert_encoding($data, 'UTF-8', 'UTF-8');
+            }
+        }
+        return $data;
     }
 
     private function generateContextFromMetadata($database, $tablesMetadata)
@@ -970,7 +1010,8 @@ class ApiController extends Controller
             }
 
             // Generate table description
-            $tableDescription = $this->generateTableDescription($tableName, $tableInfo['table_comment'], $columns);
+            $tableComment = $tableInfo['table_comment'];
+            $tableDescription = $this->generateTableDescription($tableName, $tableComment, $columns);
 
             // Process columns
             $processedColumns = [];
